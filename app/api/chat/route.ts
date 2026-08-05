@@ -108,6 +108,8 @@ export async function POST(req: NextRequest) {
   const maxTokens = MAX_TOKENS[task] ?? 2000;
   const encoder = new TextEncoder();
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   const stream = new ReadableStream({
     async start(controller) {
       let succeeded = false;
@@ -115,63 +117,78 @@ export async function POST(req: NextRequest) {
 
       for (const modelId of chain) {
         if (succeeded) break;
-        try {
-          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-              'HTTP-Referer': 'http://localhost:3000',
-              'X-Title': 'Interview Copilot',
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: fullMessages,
-              stream: true,
-              temperature: 0.7,
-              max_tokens: maxTokens,
-            }),
-          });
 
-          if (!res.ok || !res.body) {
-            lastError = `${modelId}: HTTP ${res.status}`;
-            continue;
-          }
+        // Try each model up to 3 times with exponential backoff for 429s
+        for (let attempt = 0; attempt < 3 && !succeeded; attempt += 1) {
+          try {
+            const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'http://localhost:3000',
+                'X-Title': 'Interview Copilot',
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: fullMessages,
+                stream: true,
+                temperature: 0.7,
+                max_tokens: maxTokens,
+              }),
+            });
 
-          // Signal which model is being used
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ model: modelId })}\n\n`));
+            if (!res.ok || !res.body) {
+              lastError = `${modelId}: HTTP ${res.status}`;
+              if (res.status === 429) {
+                // Exponential backoff: 1.2s, 2.4s, 4.8s
+                const backoff = 1200 * Math.pow(2, attempt);
+                await sleep(backoff);
+                continue;
+              }
+              break;
+            }
 
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
+            // Signal which model is being used
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ model: modelId })}\n\n`));
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed || !trimmed.startsWith('data:')) continue;
-              const data = trimmed.slice(5).trim();
-              if (data === '[DONE]') continue;
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta?.content;
-                if (delta) {
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() ?? '';
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data:')) continue;
+                const data = trimmed.slice(5).trim();
+                if (data === '[DONE]') continue;
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta?.content;
+                  if (delta) {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
+                  }
+                } catch {
+                  // ignore malformed chunk
                 }
-              } catch {
-                // ignore malformed chunk
               }
             }
+            succeeded = true;
+          } catch (err) {
+            lastError = `${modelId}: ${err instanceof Error ? err.message : String(err)}`;
+            if (lastError.includes('429')) {
+              const backoff = 1200 * Math.pow(2, attempt);
+              await sleep(backoff);
+              continue;
+            }
+            break;
           }
-          succeeded = true;
-        } catch (err) {
-          lastError = `${modelId}: ${err instanceof Error ? err.message : String(err)}`;
-          continue;
         }
       }
 

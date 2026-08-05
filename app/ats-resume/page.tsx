@@ -78,7 +78,11 @@ export default function ATSResumePage() {
     });
 
     if (!res.ok) {
-      setError(res.error ?? 'Analysis failed.');
+      if (res.error?.includes('HTTP 429')) {
+        setError('The AI service is rate limited right now. Please wait a few seconds and try again.');
+      } else {
+        setError(res.error ?? 'Analysis failed.');
+      }
       setLoading(null);
       return;
     }
@@ -122,7 +126,11 @@ export default function ATSResumePage() {
     });
 
     if (!res.ok) {
-      setError(res.error ?? 'Resume generation failed.');
+      if (res.error?.includes('HTTP 429')) {
+        setError('The AI service is rate limited right now. Please wait a few seconds and try again.');
+      } else {
+        setError(res.error ?? 'Resume generation failed.');
+      }
       setLoading(null);
       return;
     }
