@@ -5,6 +5,7 @@ import type { TranscriptSegment } from '@/lib/types';
 interface DeepgramOptions {
   apiKey: string;
   onSegment: (seg: TranscriptSegment) => void;
+  onSpeechEnd: (text: string) => void;
   onOpen: () => void;
   onClose: () => void;
   onError: (err: string) => void;
@@ -19,6 +20,8 @@ export class DeepgramStream {
   private maxReconnect = 5;
   private shouldRun = false;
   private opts: DeepgramOptions;
+  private utteranceBuffer = '';
+  private speechActive = false;
 
   constructor(opts: DeepgramOptions) {
     this.opts = opts;
@@ -65,6 +68,21 @@ export class DeepgramStream {
   private handleMessage(event: MessageEvent) {
     try {
       const data = JSON.parse(event.data);
+
+      // VAD events — detect when the interviewer starts/stops speaking
+      if (data.type === 'SpeechStarted') {
+        this.speechActive = true;
+        return;
+      }
+
+      if (data.type === 'SpeechEnded') {
+        this.speechActive = false;
+        const text = this.utteranceBuffer.trim();
+        this.utteranceBuffer = '';
+        if (text) this.opts.onSpeechEnd(text);
+        return;
+      }
+
       if (data.type === 'Results' && data.channel?.alternatives?.[0]) {
         const alt = data.channel.alternatives[0];
         const isFinal = Boolean(data.is_final);
@@ -77,7 +95,13 @@ export class DeepgramStream {
           duration: data.duration ?? 0,
           confidence: alt.confidence ?? 0,
         };
-        if (seg.text.trim()) this.opts.onSegment(seg);
+        if (seg.text.trim()) {
+          // Accumulate final segments into the utterance buffer
+          if (isFinal) {
+            this.utteranceBuffer = (this.utteranceBuffer + ' ' + seg.text).trim();
+          }
+          this.opts.onSegment(seg);
+        }
       }
     } catch {
       // ignore
@@ -96,7 +120,7 @@ export class DeepgramStream {
         const input = e.inputBuffer.getChannelData(0);
         const pcm = floatTo16(input);
         if (this.ws.bufferedAmount < 16384) {
-          this.ws.send(pcm.buffer);
+          this.ws.send(pcm.buffer as ArrayBuffer);
         }
       };
 
@@ -130,6 +154,8 @@ export class DeepgramStream {
       this.audioContext = null;
     }
     this.stream = null;
+    this.utteranceBuffer = '';
+    this.speechActive = false;
   }
 }
 

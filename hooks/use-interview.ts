@@ -33,10 +33,10 @@ export function useInterview() {
   const openRouterModel = useCopilotStore((s) => s.settings.openRouterModel);
 
   const deepgramRef = useRef<DeepgramStream | null>(null);
-  const transcriptBuffer = useRef('');
   const lastQuestionRef = useRef('');
   const answerAbortRef = useRef<AbortController | null>(null);
   const configRef = useRef<{ deepgramKey: string; model: string } | null>(null);
+  const isGeneratingRef = useRef(false);
 
   // Load config once (re-fetch if model changes)
   useEffect(() => {
@@ -76,7 +76,9 @@ export function useInterview() {
   const generateAnswer = useCallback(
     async (question: string) => {
       if (!question.trim() || question === lastQuestionRef.current) return;
+      if (isGeneratingRef.current) return;
       lastQuestionRef.current = question;
+      isGeneratingRef.current = true;
       setCurrentQuestion(question);
       setThinking(true);
 
@@ -92,29 +94,39 @@ export function useInterview() {
       ];
 
       setCurrentAnswer('');
-      await streamChat({
-        task: 'answer-question',
-        messages,
-        model: configRef.current?.model ?? 'auto',
-        signal: ac.signal,
-        onToken: (chunk) => {
-          raw += chunk;
-          setCurrentAnswer(raw);
-        },
-      });
+      try {
+        await streamChat({
+          task: 'answer-question',
+          messages,
+          model: configRef.current?.model ?? 'auto',
+          signal: ac.signal,
+          onToken: (chunk) => {
+            raw += chunk;
+            setCurrentAnswer(raw);
+          },
+        });
 
-      const parsed = extractJson<AIAnswer>(raw);
-      const turn: ConversationTurn = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: question,
-        questionType: parsed?.questionType ?? 'general',
-        confidence: parsed?.confidenceScore ?? 0,
-        answer: parsed ?? undefined,
-        timestamp: Date.now(),
-      };
-      addTurn(turn);
-      setThinking(false);
+        const parsed = extractJson<AIAnswer>(raw);
+        const turn: ConversationTurn = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: question,
+          questionType: parsed?.questionType ?? 'general',
+          confidence: parsed?.confidenceScore ?? 0,
+          answer: parsed ?? undefined,
+          timestamp: Date.now(),
+        };
+        addTurn(turn);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          // Aborted — a new question came in, don't add a turn
+        } else {
+          console.error('Failed to generate answer:', err);
+        }
+      } finally {
+        isGeneratingRef.current = false;
+        setThinking(false);
+      }
     },
     [buildContextMessages, addTurn, setCurrentAnswer, setCurrentQuestion, setThinking]
   );
@@ -122,7 +134,6 @@ export function useInterview() {
   const handleSegment = useCallback(
     (seg: TranscriptSegment) => {
       if (seg.isFinal && seg.text.trim()) {
-        transcriptBuffer.current = (transcriptBuffer.current + ' ' + seg.text).trim();
         // Add interviewer turn to history
         addTurn({
           id: crypto.randomUUID(),
@@ -132,19 +143,21 @@ export function useInterview() {
           confidence: seg.confidence,
           timestamp: Date.now(),
         });
-
-        // Detect end-of-turn / question: if it ends with ? or has endpointing
-        const text = transcriptBuffer.current.trim();
-        if (text && (text.endsWith('?') || text.endsWith('.') || seg.duration > 1.5)) {
-          generateAnswer(text);
-          transcriptBuffer.current = '';
-        }
       } else {
         // Interim — show live partial
-        setCurrentQuestion((transcriptBuffer.current + ' ' + seg.text).trim());
+        setCurrentQuestion(seg.text.trim());
       }
     },
-    [generateAnswer, addTurn, setCurrentQuestion]
+    [addTurn, setCurrentQuestion]
+  );
+
+  const handleSpeechEnd = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      // The interviewer has finished speaking — now generate the answer
+      generateAnswer(text);
+    },
+    [generateAnswer]
   );
 
   const startInterview = useCallback(async () => {
@@ -186,6 +199,7 @@ export function useInterview() {
     deepgramRef.current = new DeepgramStream({
       apiKey: configRef.current!.deepgramKey,
       onSegment: handleSegment,
+      onSpeechEnd: handleSpeechEnd,
       onOpen: () => setDeepgramConnected(true),
       onClose: () => setDeepgramConnected(false),
       onError: (e) => console.error('Deepgram:', e),
@@ -193,12 +207,13 @@ export function useInterview() {
     await deepgramRef.current.start(stream);
     setListening(true);
     return { ok: true };
-  }, [handleSegment, setDeepgramConnected, setListening]);
+  }, [handleSegment, handleSpeechEnd, setDeepgramConnected, setListening]);
 
   const stopInterview = useCallback(() => {
     deepgramRef.current?.stop();
     deepgramRef.current = null;
     answerAbortRef.current?.abort();
+    isGeneratingRef.current = false;
     setListening(false);
     setDeepgramConnected(false);
   }, [setListening, setDeepgramConnected]);
