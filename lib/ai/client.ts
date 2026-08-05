@@ -2,7 +2,7 @@
 
 import type { ChatMessage } from '@/lib/types';
 
-type Task = 'analyze-resume' | 'interview-prep' | 'answer-question' | 'detect-question';
+type Task = 'analyze-resume' | 'generate-ats-resume' | 'interview-prep' | 'answer-question' | 'detect-question';
 
 interface StreamOptions {
   task: Task;

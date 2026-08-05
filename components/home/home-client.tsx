@@ -84,6 +84,14 @@ export function HomeClient() {
                 <Zap className="h-5 w-5" /> Get Started
                 <ArrowRight className="h-5 w-5" />
               </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-14 gap-2 rounded-full px-8 text-base"
+                onClick={() => router.push('/ats-resume')}
+              >
+                Improve your ATS Resume
+              </Button>
               {resume && job && (
                 <Button
                   size="lg"

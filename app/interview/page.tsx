@@ -20,6 +20,7 @@ export default function InterviewPage() {
   const store = useCopilotStore();
   const { startInterview, stopInterview, QUESTION_TYPE_LABELS } = useInterview();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const answerEndRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -45,6 +46,10 @@ export default function InterviewPage() {
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [store.turns]);
+
+  useEffect(() => {
+    answerEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [store.turns, store.isThinking]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -171,21 +176,68 @@ export default function InterviewPage() {
             </h2>
           </div>
           <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-            {store.isThinking && !latestAnswer ? (
-              <div className="flex h-full flex-col items-center justify-center text-center">
-                <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
-                <p className="text-sm font-medium">Crafting your answer…</p>
-                <div className="mx-auto mt-4 h-1 w-48 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full w-1/2 animate-shimmer rounded-full" />
-                </div>
-              </div>
-            ) : latestAnswer ? (
-              <AnswerView answer={latestAnswer} />
-            ) : (
+            {assistantTurns.length === 0 && !store.isThinking ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
                 <Sparkles className="mb-4 h-12 w-12 text-primary/40" />
                 <p className="font-medium">Answers appear here</p>
                 <p className="mt-1 text-sm">When the interviewer asks a question, the AI will generate an instant response.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <AnimatePresence initial={false}>
+                  {assistantTurns.map((turn, idx) => (
+                    turn.answer && (
+                      <motion.div
+                        key={turn.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="space-y-2"
+                      >
+                        {/* Question this answer is for */}
+                        <div className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/50 px-3 py-2">
+                          <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Q{idx + 1}: {turn.content}
+                            </p>
+                          </div>
+                        </div>
+                        <AnswerView answer={turn.answer} />
+                      </motion.div>
+                    )
+                  ))}
+                </AnimatePresence>
+
+                {/* Streaming indicator for the current answer being generated */}
+                {store.isThinking && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" /> Generating answer…
+                  </div>
+                )}
+
+                {/* Show streaming partial answer if available */}
+                {store.currentAnswer && store.isThinking && (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/50 px-3 py-2">
+                      <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {store.currentQuestion || 'Current question'}
+                      </p>
+                    </div>
+                    <Card className="glass border-0 shadow-lg">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-sm">
+                          <Sparkles className="h-4 w-4 text-primary" /> Professional Response
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{store.currentAnswer}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                <div ref={answerEndRef} />
               </div>
             )}
           </div>

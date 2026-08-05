@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { useCopilotStore } from '@/lib/store';
 import type { ParsedResume } from '@/lib/types';
 
-export function ResumeUploader({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+export function ResumeUploader({ onBack, onNext, nextLabel }: { onBack: () => void; onNext: () => void; nextLabel?: string }) {
   const setResume = useCopilotStore((s) => s.setResume);
   const existing = useCopilotStore((s) => s.resume);
   const [dragging, setDragging] = useState(false);
@@ -115,7 +115,7 @@ export function ResumeUploader({ onBack, onNext }: { onBack: () => void; onNext:
       {existing && (
         <div className="mt-6 flex justify-end">
           <Button size="lg" className="gap-2 rounded-full" onClick={onNext}>
-            Continue <ArrowRight className="h-4 w-4" />
+            {nextLabel ?? 'Continue'} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       )}

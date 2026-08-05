@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 interface RequestBody {
-  task: 'analyze-resume' | 'interview-prep' | 'answer-question' | 'detect-question';
+  task: 'analyze-resume' | 'generate-ats-resume' | 'interview-prep' | 'answer-question' | 'detect-question';
   messages: ChatMessage[];
   model?: string;
 }
@@ -14,6 +14,7 @@ interface RequestBody {
 // Max tokens per task — interview-prep needs much more room than a single answer
 const MAX_TOKENS: Record<RequestBody['task'], number> = {
   'analyze-resume': 4000,
+  'generate-ats-resume': 6000,
   'interview-prep': 8000,
   'answer-question': 2000,
   'detect-question': 200,
@@ -50,6 +51,12 @@ Be specific and actionable. Use the resume and job data provided. Output ONLY th
   "strengthQuestions": [{ "id": string, "question": string, "type": "strength", "category": "strength", "suggestedAnswer": string, "keyPoints": string[] }]
 }
 Generate 3-5 questions per category (keep answers concise to fit within token limits). Make answers specific to the candidate's resume. Each "type" must be one of: behavioral, technical, situational, leadership, culture_fit, problem_solving, salary, strength, weakness, follow_up, general. Output ONLY the JSON object, starting with { and ending with }.`,
+  'generate-ats-resume': `You are an expert ATS resume writer. Rewrite the provided resume into a polished, recruiter-friendly, ATS-compatible resume. Keep the candidate's experience, achievements, and skills intact. Use a clean structured format with clear headings, concise bullet points, quantifiable impact statements, and strong keywords. Return ONLY valid JSON with this exact schema:
+{
+  "improvedResume": string,
+  "notes": string
+}
+Output ONLY the JSON object, starting with { and ending with }.`,
   'answer-question': `You are an expert interview coach helping a candidate during a LIVE interview. Given the interviewer's question, the conversation history, the candidate's resume, and the job context, generate an instant, professional answer.
 
 Return ONLY valid JSON (no markdown fences, no prose before or after) with this exact schema:
