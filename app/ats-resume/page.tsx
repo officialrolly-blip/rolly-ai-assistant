@@ -99,12 +99,32 @@ export default function ATSResumePage() {
     toast.success('Resume analysis complete');
   };
 
+  const tryParseAtsResume = (raw: string): ATSResumeResult | null => {
+    const parsed = extractJson<ATSResumeResult>(raw);
+    if (parsed && parsed.improvedResume) return parsed;
+
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+
+    const candidate = match[0]
+      .replace(/```json|```/gi, '')
+      .replace(/,\s*([}\]])/g, '$1')
+      .trim();
+
+    try {
+      return JSON.parse(candidate) as ATSResumeResult;
+    } catch {
+      return null;
+    }
+  };
+
   const handleGenerate = async () => {
     if (!resume) return;
     if (!analysis) {
       setError('Please analyze your resume first.');
       return;
     }
+    resetFlow();
     setLoading('generate');
     setError(null);
 
@@ -112,7 +132,7 @@ export default function ATSResumePage() {
     const messages = [
       {
         role: 'user' as const,
-        content: `RESUME:\n${resume.text}\n\nANALYSIS SUMMARY:\n${analysis.summary}\n\nSUGGESTIONS:\n${analysis.suggestions.join('; ')}\n\nINSTRUCTIONS: Rewrite this resume into a new, polished ATS-friendly resume. Keep the candidate's experience, achievements, and keywords intact. Use a clear ATS resume structure with headings, concise bullet points, and quantifiable results. Return ONLY valid JSON with this schema:\n{\n  "improvedResume": string,\n  "notes": string\n}`,
+        content: `RESUME:\n${resume.text}\n\nANALYSIS SUMMARY:\n${analysis.summary}\n\nSUGGESTIONS:\n${analysis.suggestions.join('; ')}\n\nINSTRUCTIONS: Rewrite this resume into a polished ATS-friendly resume. Keep the candidate's experience, achievements, and keywords intact. Use a clear ATS resume structure with headings, concise bullet points, and quantifiable results. Return ONLY valid JSON with this schema:\n{\n  "improvedResume": string,\n  "notes": string\n}\nDo not include markdown fences or explanations.`,
       },
     ];
 
@@ -135,8 +155,9 @@ export default function ATSResumePage() {
       return;
     }
 
-    const parsed = extractJson<ATSResumeResult>(raw);
+    const parsed = tryParseAtsResume(raw);
     if (!parsed || !parsed.improvedResume) {
+      console.error('ATS parse failed raw:', raw);
       setError('Could not parse generated resume. Try again.');
       setLoading(null);
       return;

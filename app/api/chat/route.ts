@@ -51,7 +51,7 @@ Be specific and actionable. Use the resume and job data provided. Output ONLY th
   "strengthQuestions": [{ "id": string, "question": string, "type": "strength", "category": "strength", "suggestedAnswer": string, "keyPoints": string[] }]
 }
 Generate 3-5 questions per category (keep answers concise to fit within token limits). Make answers specific to the candidate's resume. Each "type" must be one of: behavioral, technical, situational, leadership, culture_fit, problem_solving, salary, strength, weakness, follow_up, general. Output ONLY the JSON object, starting with { and ending with }.`,
-  'generate-ats-resume': `You are an expert ATS resume writer. Rewrite the provided resume into a polished, recruiter-friendly, ATS-compatible resume. Keep the candidate's experience, achievements, and skills intact. Use a clean structured format with clear headings, concise bullet points, quantifiable impact statements, and strong keywords. Return ONLY valid JSON with this exact schema:
+  'generate-ats-resume': `You are an expert ATS resume writer. Rewrite the provided resume into a polished, recruiter-friendly, ATS-compatible resume. Keep the candidate's experience, achievements, and skills intact. Use a clean structured format with clear headings, concise bullet points, quantifiable impact statements, and strong keywords. Do not include markdown fences or any explanation. Return ONLY valid JSON with this exact schema:
 {
   "improvedResume": string,
   "notes": string
@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
                 await sleep(backoff);
                 continue;
               }
+              // Non-retryable error like 404 — move to next model immediately
               break;
             }
 

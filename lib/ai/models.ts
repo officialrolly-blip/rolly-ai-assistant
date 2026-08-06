@@ -24,7 +24,6 @@ export const FREE_MODELS: OpenRouterModel[] = [
   { id: 'allenai/olmo-2-1124-7b-instruct:free', name: 'OLMo 2 1124 7B (free)', free: true },
   { id: 'qwen/qwen2.5-72b-instruct:free', name: 'Qwen 2.5 72B (free)', free: true },
   { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Meta Llama 3.1 8B (free)', free: true },
-  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (free)', free: true },
 ];
 
 export function resolveModelId(choice: string): string {
